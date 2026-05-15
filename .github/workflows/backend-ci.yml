@@ -25,9 +25,13 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '21'
-          distribution: 'temurin' # Standard enterprise distribution
+          distribution: 'temurin'
           cache: 'maven'
 
-      # This command compiles the code and runs all JUnit tests
-      - name: Build and Test with Maven
-        run: mvn clean verify
+      # NEW: Grant execution rights to the wrapper
+      - name: Make Maven Wrapper Executable
+        run: chmod +x mvnw
+
+      # NEW: Use the wrapper instead of global maven
+      - name: Build and Test with Maven Wrapper
+        run: ./mvnw clean verify
