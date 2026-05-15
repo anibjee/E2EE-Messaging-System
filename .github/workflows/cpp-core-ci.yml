@@ -1,32 +1,33 @@
-name: C++ Core CI
+name: C++ Crypto Core CI
 
 on:
   push:
-    branches: [ main ]
     paths:
-      - 'cpp-core/**'
-      - 'frontend-monorepo/cpp/**'
+      - 'frontend-monorepo/apps/expo/android/app/src/main/cpp/**'
   pull_request:
-    branches: [ main ]
     paths:
-      - 'cpp-core/**'
-      - 'frontend-monorepo/cpp/**'
+      - 'frontend-monorepo/apps/expo/android/app/src/main/cpp/**'
 
 jobs:
-  build:
+  compile-native:
+    name: Compile C++ HAL
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake build-essential
+      - name: Install CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.22.x'
 
+      # We will point this to your CMakeLists.txt once you create it
       - name: Configure CMake
-        run: cmake -B build -S .
-        # Note: Adjust the source path (-S .) if the C++ code is in a specific subdirectory
+        run: |
+          mkdir -p build
+          # cmake -B build -S frontend-monorepo/apps/expo/android/app/src/main/cpp
 
-      - name: Build
-        run: cmake --build build
+      - name: Compile Library
+        run: echo "C++ Compilation step ready for integration."
+        # run: cmake --build build
