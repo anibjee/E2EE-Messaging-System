@@ -1,0 +1,40 @@
+{
+  "name": "solito-blank",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/react": "^18.2.21",
+    "@types/sockjs-client": "^1.5.4",
+    "eslint": "^8.21.0",
+    "turbo": "^2.4.4",
+    "typescript": "^5.2.2"
+  },
+  "scripts": {
+    "web": "cd apps/next && npx next dev",
+    "native": "cd apps/expo && npx expo start"
+  },
+  
+  "eslintConfig": {
+    "extends": "next",
+    "settings": {
+      "next": {
+        "rootDir": "apps/next/"
+      }
+    },
+    "root": true
+  },
+  "prettier": {
+    "semi": false,
+    "useTabs": false,
+    "tabWidth": 2,
+    "singleQuote": true
+  },
+  "dependencies": {
+    "@stomp/stompjs": "^7.3.0",
+    "sockjs-client": "^1.6.1",
+    "zustand": "^5.0.13"
+  }
+}
