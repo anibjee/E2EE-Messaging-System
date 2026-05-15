@@ -35,4 +35,11 @@ public class AuthController {
         
         return ResponseEntity.ok(savedUser);
     }
+
+    @GetMapping("/user/{username}/key")
+    public ResponseEntity<?> getPublicKey(@PathVariable String username) {
+        return userRepository.findByUsername(username)
+                .map(user -> ResponseEntity.ok(java.util.Map.of("publicKey", user.getPublicKey())))
+                .orElse(ResponseEntity.notFound().build());
+    }
 }

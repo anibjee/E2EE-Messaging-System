@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
 import { useChatStore } from '../../store/useChatStore';
 import { generateKeyPair, encryptMessage } from '../../utils/crypto';
+import { registerUserOnServer } from '../../utils/api';
 
 // Hardcoded identities for our Tracer Bullet test
 const MY_USER_ID = 'Agent007';
@@ -12,11 +13,21 @@ export function HomeScreen() {
   const [inputText, setInputText] = useState('');
 
   useEffect(() => {
-    // 1. Generate keys for this session
-    const keys = generateKeyPair();
-    setKeys(keys);
-    // 2. Connect
-    connect(MY_USER_ID);
+    const init = async () => {
+      const keys = generateKeyPair();
+      setKeys(keys);
+      
+      // Register our key in the PostgreSQL DB
+      try {
+        await registerUserOnServer(MY_USER_ID, keys.publicKey);
+        console.log("Registered with DB");
+      } catch (e) {
+        console.log("Already registered or server down");
+      }
+
+      connect(MY_USER_ID);
+    };
+    init();
   }, []);
 
   const handleSend = () => {
