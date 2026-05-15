@@ -5,8 +5,8 @@ import { generateKeyPair, encryptMessage } from '../../utils/crypto';
 import { registerUserOnServer, fetchPublicKey } from '../../utils/api';
 
 // Hardcoded identities for our Tracer Bullet test
-const MY_USER_ID = 'Agent007';
-const TARGET_USER_ID = 'Agent008'; 
+const MY_USER_ID = 'Agent008';
+const TARGET_USER_ID = 'Agent007'; 
 
 export function HomeScreen() {
   const { messages, connect, sendMessage, isConnected, myKeys, setKeys } = useChatStore();
