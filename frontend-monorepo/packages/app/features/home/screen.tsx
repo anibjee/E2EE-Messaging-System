@@ -36,23 +36,23 @@ export function HomeScreen() {
     if (!inputText.trim() || !myKeys) return;
 
     try {
-      // 1. Look up the target's public key in the "Phonebook" (DB)
+      // 1. Ask the Java "Phonebook" for the other person's Public Key
       const recipientPubKey = await fetchPublicKey(TARGET_USER_ID);
 
-      // 2. Encrypt the message using THEIR public key and OUR private key
+      // 2. Encrypt the message using THEIR Public Key + OUR Private Key
       const encrypted = encryptMessage({ text: inputText }, recipientPubKey, myKeys.privateKey);
 
-      // 3. Send through the WebSocket
+      // 3. Send the "garbage" string to the backend
       sendMessage({
         id: Date.now().toString(),
         senderId: MY_USER_ID,
         recipientId: TARGET_USER_ID,
-        ciphertext: encrypted, // Sending the binary blob as a string
+        ciphertext: encrypted,
       });
 
       setInputText('');
     } catch (e) {
-      console.error("Could not find recipient or encrypt message", e);
+      console.error("Encryption failed: Recipient probably hasn't registered yet.", e);
     }
   };
 
