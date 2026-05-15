@@ -1,28 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
 import { useChatStore } from '../../store/useChatStore';
+import { generateKeyPair, encryptMessage } from '../../utils/crypto';
 
 // Hardcoded identities for our Tracer Bullet test
 const MY_USER_ID = 'Agent007';
 const TARGET_USER_ID = 'Agent008'; 
 
 export function HomeScreen() {
-  const { messages, connect, sendMessage, isConnected } = useChatStore();
+  const { messages, connect, sendMessage, isConnected, myKeys, setKeys } = useChatStore();
   const [inputText, setInputText] = useState('');
 
-  // Connect to the Java backend when the screen loads
   useEffect(() => {
+    // 1. Generate keys for this session
+    const keys = generateKeyPair();
+    setKeys(keys);
+    // 2. Connect
     connect(MY_USER_ID);
-  }, [connect]);
+  }, []);
 
   const handleSend = () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !myKeys) return;
+
+    // 3. Encrypt the payload before sending
+    // For this test, we are "sending to ourselves" to verify the loop
+    const encrypted = encryptMessage({ text: inputText }, myKeys.publicKey, myKeys.privateKey);
 
     sendMessage({
       id: Date.now().toString(),
       senderId: MY_USER_ID,
       recipientId: TARGET_USER_ID,
-      ciphertext: inputText, 
+      ciphertext: encrypted, // Sending the binary blob as a string
     });
 
     setInputText('');

@@ -27,3 +27,24 @@ export const encryptMessage = (jsonMessage: any, recipientPublicKey: string, myP
   
   return encode(fullMessage);
 };
+
+export const decryptMessage = (messageBase64: string, senderPublicKey: string, myPrivateKey: string) => {
+  const fullMessage = decode(messageBase64);
+  
+  // Extract nonce and ciphertext
+  const nonce = fullMessage.slice(0, nacl.box.nonceLength);
+  const encrypted = fullMessage.slice(nacl.box.nonceLength);
+
+  const decrypted = nacl.box.open(
+    encrypted,
+    nonce,
+    decode(senderPublicKey),
+    decode(myPrivateKey)
+  );
+
+  if (!decrypted) {
+    throw new Error('Failed to decrypt message: Decryption error or invalid keys.');
+  }
+
+  return JSON.parse(new TextDecoder().decode(decrypted));
+};
