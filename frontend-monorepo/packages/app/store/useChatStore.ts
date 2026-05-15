@@ -47,6 +47,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           // If we have keys, attempt to decrypt. If not, show ciphertext.
           try {
             if (myKeys) {
+              console.log(`🔓 Attempting to decrypt message from ${received.senderId}...`);
+              
               // 1. Fetch the SENDER'S public key from the Java "Phonebook"
               const senderPubKey = await fetchPublicKey(received.senderId);
 
@@ -55,9 +57,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
               
               // 3. Replace the gibberish with the actual text
               received.ciphertext = plain.text; 
+              console.log("✅ Decryption successful!");
             }
           } catch (e) {
-            console.error("Decryption failed. Keeping ciphertext.", e);
+            // If decryption fails (e.g. key mismatch), we keep the ciphertext so we can see it
+            console.error("❌ Decryption failed. Did you refresh both browsers?", e);
           }
 
           set((state) => ({ messages: [...state.messages, received] }));
