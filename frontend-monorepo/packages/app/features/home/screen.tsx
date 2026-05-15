@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
 import { useChatStore } from '../../store/useChatStore';
 import { generateKeyPair, encryptMessage } from '../../utils/crypto';
-import { registerUserOnServer } from '../../utils/api';
+import { registerUserOnServer, fetchPublicKey } from '../../utils/api';
 
 // Hardcoded identities for our Tracer Bullet test
 const MY_USER_ID = 'Agent007';
@@ -32,21 +32,28 @@ export function HomeScreen() {
     init();
   }, []);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputText.trim() || !myKeys) return;
 
-    // 3. Encrypt the payload before sending
-    // For this test, we are "sending to ourselves" to verify the loop
-    const encrypted = encryptMessage({ text: inputText }, myKeys.publicKey, myKeys.privateKey);
+    try {
+      // 1. Look up the target's public key in the "Phonebook" (DB)
+      const recipientPubKey = await fetchPublicKey(TARGET_USER_ID);
 
-    sendMessage({
-      id: Date.now().toString(),
-      senderId: MY_USER_ID,
-      recipientId: TARGET_USER_ID,
-      ciphertext: encrypted, // Sending the binary blob as a string
-    });
+      // 2. Encrypt the message using THEIR public key and OUR private key
+      const encrypted = encryptMessage({ text: inputText }, recipientPubKey, myKeys.privateKey);
 
-    setInputText('');
+      // 3. Send through the WebSocket
+      sendMessage({
+        id: Date.now().toString(),
+        senderId: MY_USER_ID,
+        recipientId: TARGET_USER_ID,
+        ciphertext: encrypted, // Sending the binary blob as a string
+      });
+
+      setInputText('');
+    } catch (e) {
+      console.error("Could not find recipient or encrypt message", e);
+    }
   };
 
   return (
