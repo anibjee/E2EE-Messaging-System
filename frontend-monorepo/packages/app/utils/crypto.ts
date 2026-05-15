@@ -1,14 +1,21 @@
 import nacl from 'tweetnacl';
-import { encode, decode } from 'base64-js';
+import { fromByteArray, toByteArray } from 'base64-js';
 
+/**
+ * Generates a Curve25519 keypair for E2EE.
+ */
 export const generateKeyPair = () => {
   const keyPair = nacl.box.keyPair();
   return {
-    publicKey: encode(keyPair.publicKey),
-    privateKey: encode(keyPair.secretKey),
+    // fromByteArray converts Uint8Array to a Base64 string
+    publicKey: fromByteArray(keyPair.publicKey),
+    privateKey: fromByteArray(keyPair.secretKey),
   };
 };
 
+/**
+ * Encrypts a message for a specific recipient.
+ */
 export const encryptMessage = (jsonMessage: any, recipientPublicKey: string, myPrivateKey: string) => {
   const nonce = nacl.randomBytes(nacl.box.nonceLength);
   const messageUint8 = new TextEncoder().encode(JSON.stringify(jsonMessage));
@@ -16,30 +23,31 @@ export const encryptMessage = (jsonMessage: any, recipientPublicKey: string, myP
   const encrypted = nacl.box(
     messageUint8,
     nonce,
-    decode(recipientPublicKey),
-    decode(myPrivateKey)
+    toByteArray(recipientPublicKey), // toByteArray converts Base64 back to binary
+    toByteArray(myPrivateKey)
   );
 
-  // We return the nonce + the encrypted data so the receiver can decrypt it
   const fullMessage = new Uint8Array(nonce.length + encrypted.length);
   fullMessage.set(nonce);
   fullMessage.set(encrypted, nonce.length);
   
-  return encode(fullMessage);
+  return fromByteArray(fullMessage);
 };
 
+/**
+ * Decrypts a message from a sender.
+ */
 export const decryptMessage = (messageBase64: string, senderPublicKey: string, myPrivateKey: string) => {
-  const fullMessage = decode(messageBase64);
+  const fullMessage = toByteArray(messageBase64);
   
-  // Extract nonce and ciphertext
   const nonce = fullMessage.slice(0, nacl.box.nonceLength);
   const encrypted = fullMessage.slice(nacl.box.nonceLength);
 
   const decrypted = nacl.box.open(
     encrypted,
     nonce,
-    decode(senderPublicKey),
-    decode(myPrivateKey)
+    toByteArray(senderPublicKey),
+    toByteArray(myPrivateKey)
   );
 
   if (!decrypted) {
