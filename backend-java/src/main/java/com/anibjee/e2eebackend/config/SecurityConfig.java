@@ -17,7 +17,8 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for stateless REST APIs
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/**").permitAll() // Open the auth routes
-                .anyRequest().authenticated() // Lock everything else
+                .requestMatchers("/ws-chat/**").permitAll()     // NEW: Open the WebSocket handshake!
+                .anyRequest().authenticated()                   // Lock everything else
             );
         return http.build();
     }
