@@ -5,11 +5,11 @@ import { generateKeyPair, encryptMessage } from '../../utils/crypto';
 import { registerUserOnServer, fetchPublicKey } from '../../utils/api';
 
 // Hardcoded identities for our Tracer Bullet test
-const MY_USER_ID = 'Agent008';
-const TARGET_USER_ID = 'Agent007'; 
+const MY_USER_ID = 'Agent007';
+const TARGET_USER_ID = 'Agent008'; 
 
 export function HomeScreen() {
-  const { messages, connect, sendMessage, isConnected, myKeys, setKeys } = useChatStore();
+  const { messages, connect, sendMessage, addMessage, isConnected, myKeys, setKeys } = useChatStore();
   const [inputText, setInputText] = useState('');
 
   useEffect(() => {
@@ -42,13 +42,18 @@ export function HomeScreen() {
       // 2. Encrypt the message using THEIR Public Key + OUR Private Key
       const encrypted = encryptMessage({ text: inputText }, recipientPubKey, myKeys.privateKey);
 
-      // 3. Send the "garbage" string to the backend
-      sendMessage({
+      const newMessage = {
         id: Date.now().toString(),
         senderId: MY_USER_ID,
         recipientId: TARGET_USER_ID,
-        ciphertext: encrypted,
-      });
+        ciphertext: inputText, // SHOW PLAINTEXT LOCALLY
+      };
+
+      // 3. Send the ENCRYPTED version to the server
+      sendMessage({ ...newMessage, ciphertext: encrypted });
+      
+      // 4. Add the PLAINTEXT version to your local screen
+      addMessage(newMessage);
 
       setInputText('');
     } catch (e) {
