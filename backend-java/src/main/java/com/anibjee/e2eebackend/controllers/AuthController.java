@@ -37,6 +37,7 @@ public class AuthController {
     // NEW: The lookup endpoint for Phase 4
     @GetMapping("/user/{username}/key")
     public ResponseEntity<?> getPublicKey(@PathVariable String username) {
+        System.out.println("🔍 Looking up key for user: [" + username + "]"); // 🟢 Add this line
         return userRepository.findByUsername(username)
                 .map(user -> ResponseEntity.ok(Map.of("publicKey", user.getPublicKey())))
                 .orElse(ResponseEntity.notFound().build());
