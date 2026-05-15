@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # 1. Relational Database for Users, Rooms, and Message Routing
+  postgres:
+    image: postgres:16-alpine
+    container_name: e2ee-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: securepassword
+      POSTGRES_DB: e2ee_chat
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # 2. In-Memory Store for Real-time Presence & Typing Indicators
+  redis:
+    image: redis:7-alpine
+    container_name: e2ee-redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # 3. Object Storage for Encrypted Media (Images/Videos)
+  minio:
+    image: minio/minio
+    container_name: e2ee-minio
+    restart: always
+    ports:
+      - "9000:9000" # API Port
+      - "9001:9001" # Web Console Port
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: securepassword
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+
+# Persistent Volumes so data isn't lost on restart
+volumes:
+  pgdata:
+  miniodata:

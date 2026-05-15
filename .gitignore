@@ -1,0 +1,35 @@
+# IDEs
+.idea/
+.vscode/
+
+# Environment Variables
+.env
+*.env
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# LaTeX / MiKTeX Build Artifacts
+*.aux
+*.bbl
+*.blg
+*.brf
+*.bcf
+*.idx
+*.ilg
+*.ind
+*.lof
+*.lot
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.run.xml
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Keep PDFs (This explicit negation ensures PDFs are never ignored)
+!*.pdf

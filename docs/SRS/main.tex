@@ -1,0 +1,162 @@
+\documentclass[12pt, a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{longtable}
+\usepackage{etoolbox}
+\pretocmd{\section}{\clearpage}{}{}
+
+\title{\textbf{Software Requirements Specification (SRS)}\\ \large End-to-End Encrypted Messaging Application}
+\author{System Requirements Document}
+\date{\today}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{\fill}
+    {\Huge \textbf{Software Requirements Specification} \par}
+    \vspace{0.5cm}
+    {\large End-to-End Encrypted Messaging Architecture \par}
+    \vspace{1cm}
+    {\Large \textbf{Prepared for:} Cross-Platform App Development \par}
+    \vspace{0.5cm}
+    {\large \today \par}
+    \vspace*{\fill}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+\subsection{Purpose}
+The purpose of this Software Requirements Specification (SRS) is to provide a comprehensive architectural and functional overview of the End-to-End Encrypted (E2EE) Messaging Application. This document details the expected behaviors, interfaces, and constraints of the system, serving as the definitive blueprint for the development of the frontend monorepo (React Native), the backend orchestration layer (Spring Boot), and the cryptographic core (C++).
+
+\subsection{Document Conventions}
+This document adheres to the IEEE 830-1998 standard for SRS documentation. All cryptographic references assume the use of standard, peer-reviewed algorithms (Curve25519, AES-256-GCM). The term ``Local-First'' denotes a system architecture where the client's local database (WatermelonDB) serves as the primary source of truth, with asynchronous server synchronization.
+
+\subsection{Intended Audience}
+This document is intended for:
+\begin{itemize}
+    \item \textbf{Software Engineers:} Backend, frontend, and systems developers responsible for implementing the architecture.
+    \item \textbf{Security Auditors:} Professionals reviewing the cryptographic boundaries and data flow.
+    \item \textbf{Project Managers:} For tracking milestone deliverables.
+\end{itemize}
+
+\subsection{Product Scope}
+The proposed system is a highly secure, cross-platform messaging application offering 1-on-1 chats, group chats, broadcast channels, and rich media sharing. The application enforces a strict Zero-Knowledge paradigm, ensuring that the orchestration server routing the messages cannot read the plaintext content, metadata, or media attachments. The system will deploy across Android, Web, and Desktop environments.
+
+\subsection{Definitions, Acronyms, and Abbreviations}
+\begin{description}[style=multiline, leftmargin=3cm]
+    \item[E2EE] End-to-End Encryption
+    \item[JWT] JSON Web Token
+    \item[STOMP] Simple Text Oriented Messaging Protocol
+    \item[JSI] JavaScript Interface (React Native)
+    \item[Wasm] WebAssembly
+    \item[ECDH] Elliptic Curve Diffie-Hellman
+    \item[HKDF] HMAC-based Extract-and-Expand Key Derivation Function
+    \item[HAL] Hardware Abstraction Layer
+\end{description}
+
+\section{Overall Description}
+\subsection{Product Perspective}
+The messaging application operates as a standalone ecosystem. It acts as a federated client-server model where the server is a stateless, untrusted relay, and the clients hold absolute cryptographic authority. It replaces conventional cloud-based messaging by ensuring privacy through cryptographic mathematics rather than policy.
+
+\subsection{Product Functions}
+The primary functions of the system include:
+\begin{itemize}
+    \item \textbf{Account Management:} Cryptographic identity generation and public-key publication.
+    \item \textbf{Direct Messaging:} Secure 1-on-1 text and media exchange.
+    \item \textbf{Group Messaging:} Sender-key based multi-party encryption for scalable group chats.
+    \item \textbf{Media Management:} Encrypted blob uploads and key sharing.
+    \item \textbf{State Synchronization:} Cursor-based offline-first delta sync logic.
+\end{itemize}
+
+\subsection{User Classes and Characteristics}
+\begin{itemize}
+    \item \textbf{Standard Users:} Individuals requiring secure communication without needing to understand the underlying cryptographic complexities.
+    \item \textbf{Enterprise Users:} Organizations requiring auditability of their secure enclave usage.
+\end{itemize}
+
+\subsection{Operating Environment}
+The software will operate within the following environments:
+\begin{itemize}
+    \item \textbf{Client (Mobile):} Android 8.0+ (API Level 26 and above).
+    \item \textbf{Client (Desktop/Web):} Modern Web Browsers (Chrome 90+, Firefox 88+), Windows 10/11, macOS 12+ via Electron.
+    \item \textbf{Server:} Linux-based OS (Ubuntu 22.04 LTS), Java 21 Runtime Environment, PostgreSQL 16, Redis 7, MinIO.
+\end{itemize}
+
+\subsection{Design and Implementation Constraints}
+\begin{itemize}
+    \item \textbf{Cryptographic Isolation:} JavaScript code MUST NOT have access to private keys or derived symmetric keys in raw memory. All operations must occur within the C++ memory boundary.
+    \item \textbf{Storage Limitations:} Mobile devices have limited storage; therefore, the local database must efficiently prune or archive decrypted messages.
+    \item \textbf{Network Latency:} The system must handle unreliable mobile networks gracefully through its Local-First design.
+\end{itemize}
+
+\section{System Features}
+
+\subsection{Device-Bound Cryptographic Identity}
+\textbf{Description:} To support true Zero-Knowledge multi-device usage, identities are bound strictly to devices, not user accounts. Upon registration or device provisioning, the application generates a unique public/private key pair (Curve25519) for that specific device.\\
+\textbf{Functional Requirements:}
+\begin{enumerate}
+    \item The client shall generate a 256-bit private key securely bound to the device's hardware enclave.
+    \item The client shall transmit the public key to the server, appending it to the User's list of authorized devices.
+    \item Senders must retrieve the public keys for \textit{all} of a recipient's active devices and encrypt the message pairwise for each device (the ``Session'' protocol approach).
+\end{enumerate}
+
+\subsection{Offline-First Messaging Engine}
+\textbf{Description:} Users must be able to read past messages and draft new messages regardless of network connectivity.\\
+\textbf{Functional Requirements:}
+\begin{enumerate}
+    \item The UI shall perform all reads and writes directly against the local WatermelonDB instance.
+    \item Messages drafted offline shall be marked as `PENDING` and queued for transmission upon network restoration.
+    \item The system shall utilize STOMP WebSockets to perform a `Delta Sync` upon reconnection, utilizing an auto-incrementing, monotonic \texttt{BIGINT} sequence ID (rather than timestamps) to prevent race conditions.
+    \item The system shall maintain a Local Sender Key Vault within the client's local database to securely cache incoming group Sender Keys. This ensures that massive influxes of group messages can be decrypted instantaneously upon network reconnection without requiring sequential key-fetch requests to the orchestration server.
+\end{enumerate}
+
+\subsection{Encrypted Control Messages (Metadata Protection)}
+\textbf{Description:} To prevent metadata leakage regarding user activity, events like read-receipts and typing indicators must not be sent in plaintext.\\
+\textbf{Functional Requirements:}
+\begin{enumerate}
+    \item Read-receipts and typing states shall be encapsulated as E2EE payloads (Control Messages) rather than STOMP headers.
+    \item The orchestration server shall route these control messages blindly without knowing their semantic intent.
+\end{enumerate}
+
+\subsection{Encrypted Media Uploads}
+\textbf{Description:} Images and videos must be encrypted before transmission and stored securely on the server.\\
+\textbf{Functional Requirements:}
+\begin{enumerate}
+    \item The client shall request a pre-signed MinIO URL from the backend.
+    \item The C++ core shall symmetrically encrypt the media file using a randomly generated AES-256-GCM key.
+    \item The client shall upload the ciphertext blob directly to MinIO.
+    \item The symmetric decryption key for the media shall be appended to the recipient's secure message payload.
+\end{enumerate}
+
+\section{Non-Functional Requirements}
+
+\subsection{Performance Requirements}
+\begin{itemize}
+    \item The Java Spring Boot backend shall utilize Virtual Threads to support up to 100,000 concurrent WebSocket connections per instance.
+    \item Message delivery latency (Client A $\rightarrow$ Server $\rightarrow$ Client B) shall not exceed 200ms under standard network conditions.
+\end{itemize}
+
+\subsection{Security Requirements}
+\begin{itemize}
+    \item \textbf{Zero-Knowledge Routing:} The database schema shall not contain any plain text message data. The \texttt{ciphertext} column in PostgreSQL must be rigorously maintained as raw bytes.
+    \item \textbf{Perfect Forward Secrecy (PFS):} The key derivation process shall ensure that compromised session keys do not compromise past communications.
+\end{itemize}
+
+\subsection{Reliability \& Availability}
+\begin{itemize}
+    \item The messaging infrastructure shall be containerized via Docker and orchestrated via Docker Compose to ensure rapid deployment and high availability.
+    \item The system shall guarantee at-least-once delivery; messages shall only be removed from the server's pending queue after an explicit client Acknowledgment (ACK).
+\end{itemize}
+
+\end{document}
