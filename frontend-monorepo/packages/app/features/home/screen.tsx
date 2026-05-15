@@ -14,17 +14,19 @@ export function HomeScreen() {
 
   useEffect(() => {
     const init = async () => {
+      // 1. Generate keys
       const keys = generateKeyPair();
       setKeys(keys);
       
-      // Register our key in the PostgreSQL DB
+      // 2. Register key in PostgreSQL
       try {
         await registerUserOnServer(MY_USER_ID, keys.publicKey);
-        console.log("Registered with DB");
+        console.log("✅ Identity registered in DB");
       } catch (e) {
-        console.log("Already registered or server down");
+        console.error("❌ DB Registration failed", e);
       }
 
+      // 3. Connect WebSocket
       connect(MY_USER_ID);
     };
     init();

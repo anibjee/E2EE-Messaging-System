@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -17,29 +18,26 @@ public class AuthController {
         this.userRepository = userRepository;
     }
 
-    // Java 21 Record for clean data transfer
     public record RegisterRequest(String username, String publicKey) {}
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody RegisterRequest request) {
-        if (userRepository.findByUsername(request.username()).isPresent()) {
-            return ResponseEntity.badRequest().body("Username already taken.");
-        }
-
-        User newUser = new User();
-        newUser.setUsername(request.username());
-        newUser.setPublicKey(request.publicKey());
-        newUser.setLastSeen(LocalDateTime.now());
-
-        User savedUser = userRepository.save(newUser);
+        // If user exists, we update the key (for this dev phase)
+        User user = userRepository.findByUsername(request.username())
+                .orElse(new User());
         
-        return ResponseEntity.ok(savedUser);
+        user.setUsername(request.username());
+        user.setPublicKey(request.publicKey());
+        user.setLastSeen(LocalDateTime.now());
+
+        return ResponseEntity.ok(userRepository.save(user));
     }
 
+    // NEW: The lookup endpoint for Phase 4
     @GetMapping("/user/{username}/key")
     public ResponseEntity<?> getPublicKey(@PathVariable String username) {
         return userRepository.findByUsername(username)
-                .map(user -> ResponseEntity.ok(java.util.Map.of("publicKey", user.getPublicKey())))
+                .map(user -> ResponseEntity.ok(Map.of("publicKey", user.getPublicKey())))
                 .orElse(ResponseEntity.notFound().build());
     }
 }

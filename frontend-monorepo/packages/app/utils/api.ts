@@ -10,8 +10,8 @@ export const registerUserOnServer = async (username: string, publicKey: string) 
 };
 
 export const fetchPublicKey = async (username: string) => {
-  // We'll build this endpoint in Java next!
   const response = await fetch(`${API_URL}/auth/user/${username}/key`);
+  if (!response.ok) throw new Error("User not found");
   const data = await response.json();
   return data.publicKey;
 };
