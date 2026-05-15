@@ -13,14 +13,19 @@ interface ChatState {
   messages: Message[];
   stompClient: Client | null;
   isConnected: boolean;
+  myKeys: { publicKey: string, privateKey: string } | null;
   connect: (userId: string) => void;
   sendMessage: (message: Message) => void;
+  setKeys: (keys: { publicKey: string, privateKey: string }) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   stompClient: null,
   isConnected: false,
+  myKeys: null,
+
+  setKeys: (keys) => set({ myKeys: keys }),
 
   connect: (userId: string) => {
     // Connect to the Spring Boot SockJS endpoint
