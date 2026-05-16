@@ -1,51 +1,36 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useChatStore } from '../../store/useChatStore';
-import { generateKeyPair, encryptMessage } from '../../utils/crypto';
-import { registerUserOnServer, fetchPublicKey } from '../../utils/api';
-
-// Hardcoded identities for our Tracer Bullet test
-const MY_USER_ID = 'Agent008';
-const TARGET_USER_ID = 'Agent007'; 
+import { encryptMessage } from '../../utils/crypto';
+import { fetchPublicKey } from '../../utils/api';
 
 export function HomeScreen() {
-  const { messages, connect, sendMessage, addMessage, isConnected, myKeys, setKeys } = useChatStore();
+  const { userId, messages, initializeSession, sendMessage, addMessage, isConnected, myKeys } = useChatStore();
+  const [usernameInput, setUsernameInput] = useState('');
+  const [targetInput, setTargetInput] = useState('');
+  const [activeTarget, setActiveTarget] = useState(''); 
   const [inputText, setInputText] = useState('');
 
-  useEffect(() => {
-    const init = async () => {
-      // 1. Generate keys
-      const keys = generateKeyPair();
-      setKeys(keys);
-      
-      // 2. Register key in PostgreSQL
-      try {
-        await registerUserOnServer(MY_USER_ID, keys.publicKey);
-        console.log("✅ Identity registered in DB");
-      } catch (e) {
-        console.error("❌ DB Registration failed", e);
-      }
-
-      // 3. Connect WebSocket
-      connect(MY_USER_ID);
-    };
-    init();
-  }, []);
+  const handleLogin = () => {
+    if (usernameInput.trim()) {
+      initializeSession(usernameInput);
+    }
+  };
 
   const handleSend = async () => {
-    if (!inputText.trim() || !myKeys) return;
+    if (!inputText.trim() || !myKeys || !activeTarget) return;
 
     try {
       // 1. Ask the Java "Phonebook" for the other person's Public Key
-      const recipientPubKey = await fetchPublicKey(TARGET_USER_ID);
+      const recipientPubKey = await fetchPublicKey(activeTarget);
 
       // 2. Encrypt the message using THEIR Public Key + OUR Private Key
       const encrypted = encryptMessage({ text: inputText }, recipientPubKey, myKeys.privateKey);
 
       const newMessage = {
         id: Date.now().toString(),
-        senderId: MY_USER_ID,
-        recipientId: TARGET_USER_ID,
+        senderId: userId || 'unknown',
+        recipientId: activeTarget,
         ciphertext: inputText, // SHOW PLAINTEXT LOCALLY
       };
 
@@ -61,12 +46,58 @@ export function HomeScreen() {
     }
   };
 
+  // --- VIEW 1: LOGIN SPLASH SCREEN ---
+  if (!userId) {
+    return (
+      <View style={styles.loginContainer}>
+        <View style={styles.loginCard}>
+          <Text style={styles.loginTitle}>Secure E2EE Access</Text>
+          <TextInput
+            style={styles.loginInput}
+            placeholder="Enter identity handle (e.g. Agent007)"
+            placeholderTextColor="#888"
+            value={usernameInput}
+            onChangeText={setUsernameInput}
+          />
+          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+            <Text style={styles.loginButtonText}>Initialize Key Vault</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // --- VIEW 2: ACTIVE CHAT SCREEN ---
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.container}
+    >
+      {/* Top Status Header */}
       <View style={styles.header}>
         <Text style={styles.headerText}>
-          E2EE Chat {isConnected ? '🟢 (Online)' : '🔴 (Offline)'}
+          E2EE Chat — Identity: <Text style={{ color: '#0070f3' }}>{userId}</Text> {isConnected ? '🟢 (Online)' : '🔴 (Offline)'}
         </Text>
+        
+        {/* Recipient Target Configurator */}
+        <View style={styles.targetArea}>
+          <TextInput 
+            placeholder="Target Recipient ID" 
+            placeholderTextColor="#888"
+            value={targetInput} 
+            onChangeText={setTargetInput}
+            style={styles.targetInput}
+          />
+          <TouchableOpacity 
+            onPress={() => setActiveTarget(targetInput)}
+            style={styles.targetButton}
+          >
+            <Text style={styles.targetButtonText}>Set Target</Text>
+          </TouchableOpacity>
+        </View>
+        {activeTarget ? (
+          <Text style={styles.targetStatus}>Locking payloads for: 🔐 {activeTarget}</Text>
+        ) : null}
       </View>
 
       <FlatList
@@ -76,7 +107,7 @@ export function HomeScreen() {
         renderItem={({ item }) => (
           <View style={[
             styles.bubble, 
-            item.senderId === MY_USER_ID ? styles.myBubble : styles.theirBubble
+            item.senderId === userId ? styles.myBubble : styles.theirBubble
           ]}>
             <Text style={styles.senderName}>{item.senderId}</Text>
             <Text style={styles.messageText}>{item.ciphertext}</Text>
@@ -89,22 +120,111 @@ export function HomeScreen() {
           style={styles.input}
           value={inputText}
           onChangeText={setInputText}
-          placeholder="Type a message..."
+          placeholder={activeTarget ? "Type a message..." : "Set target first"}
           placeholderTextColor="#888"
+          editable={!!activeTarget}
           onSubmitEditing={handleSend}
         />
-        <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+        <TouchableOpacity 
+          style={[styles.sendButton, !activeTarget && { backgroundColor: '#444' }]} 
+          onPress={handleSend}
+          disabled={!activeTarget}
+        >
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', height: '100vh' },
-  header: { padding: 20, backgroundColor: '#1e1e1e', borderBottomWidth: 1, borderColor: '#333' },
-  headerText: { color: '#fff', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
+  container: { flex: 1, backgroundColor: '#121212' },
+  loginContainer: { 
+    flex: 1, 
+    backgroundColor: '#121212', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  loginCard: { 
+    backgroundColor: '#1e1e1e', 
+    padding: 32, 
+    borderRadius: 8, 
+    width: 320,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8
+  },
+  loginTitle: { 
+    color: '#fff', 
+    fontSize: 24, 
+    fontWeight: 'bold', 
+    marginBottom: 24, 
+    textAlign: 'center' 
+  },
+  loginInput: { 
+    width: '100%', 
+    padding: 12, 
+    marginBottom: 16, 
+    borderRadius: 4, 
+    borderWidth: 1, 
+    borderColor: '#333', 
+    backgroundColor: '#2a2a2a', 
+    color: '#fff' 
+  },
+  loginButton: { 
+    width: '100%', 
+    padding: 12, 
+    borderRadius: 4, 
+    backgroundColor: '#0070f3', 
+    alignItems: 'center' 
+  },
+  loginButtonText: { 
+    color: '#fff', 
+    fontWeight: 'bold' 
+  },
+  header: { 
+    padding: 16, 
+    borderBottomWidth: 1, 
+    borderColor: '#222', 
+    alignItems: 'center' 
+  },
+  headerText: { 
+    color: '#fff', 
+    fontSize: 16, 
+    fontWeight: 'bold' 
+  },
+  targetArea: { 
+    flexDirection: 'row', 
+    marginTop: 8, 
+    alignItems: 'center' 
+  },
+  targetInput: { 
+    padding: 8, 
+    backgroundColor: '#222', 
+    color: '#fff', 
+    borderWidth: 1, 
+    borderColor: '#444', 
+    borderRadius: 4,
+    width: 150,
+    marginRight: 8
+  },
+  targetButton: { 
+    paddingVertical: 8, 
+    paddingHorizontal: 12, 
+    backgroundColor: '#333', 
+    borderRadius: 4 
+  },
+  targetButtonText: { 
+    color: '#fff', 
+    fontSize: 14 
+  },
+  targetStatus: { 
+    fontSize: 12, 
+    color: '#aaa', 
+    marginTop: 4 
+  },
   chatArea: { padding: 15, paddingBottom: 40 },
   bubble: { padding: 12, borderRadius: 8, marginBottom: 10, maxWidth: '80%' },
   myBubble: { backgroundColor: '#007aff', alignSelf: 'flex-end' },

@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { decryptMessage } from '../utils/crypto';
-import { fetchPublicKey } from '../utils/api';
+import { decryptMessage, getOrCreateKeysForUser } from '../utils/crypto';
+import { fetchPublicKey, registerUserOnServer } from '../utils/api';
 
 export interface Message {
   id: string;
@@ -12,10 +12,12 @@ export interface Message {
 }
 
 interface ChatState {
+  userId: string | null;
+  myKeys: { publicKey: string; privateKey: string } | null;
+  isConnected: boolean;
   messages: Message[];
   stompClient: Client | null;
-  isConnected: boolean;
-  myKeys: { publicKey: string, privateKey: string } | null;
+  initializeSession: (username: string) => Promise<void>;
   connect: (userId: string) => void;
   sendMessage: (message: Message) => void;
   addMessage: (message: Message) => void;
@@ -23,14 +25,35 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
+  userId: null,
+  myKeys: null,
+  isConnected: false,
   messages: [],
   stompClient: null,
-  isConnected: false,
-  myKeys: null,
 
   setKeys: (keys) => set({ myKeys: keys }),
 
   addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+
+  initializeSession: async (username: string) => {
+    const cleanUsername = username.trim();
+    
+    // 1. Get persistent or brand new keys
+    const keys = getOrCreateKeysForUser(cleanUsername);
+    
+    set({ userId: cleanUsername, myKeys: keys });
+
+    // 2. Register the public key with the Spring Boot server
+    try {
+      await registerUserOnServer(cleanUsername, keys.publicKey);
+      console.log(`✅ ${cleanUsername} successfully synchronized with server phonebook.`);
+    } catch (error) {
+      console.error("Failed to register identity with backend", error);
+    }
+
+    // 3. Kick off the WebSocket connection
+    get().connect(cleanUsername);
+  },
 
   connect: (userId: string) => {
     const socket = new SockJS('http://localhost:8080/ws-chat');
