@@ -1,6 +1,9 @@
 import nacl from 'tweetnacl';
 import { fromByteArray, toByteArray } from 'base64-js';
 
+export const encodeBase64 = (arr: Uint8Array): string => fromByteArray(arr);
+export const decodeBase64 = (s: string): Uint8Array => toByteArray(s);
+
 interface KeyPairStrings {
   publicKey: string;
   privateKey: string;
@@ -83,4 +86,75 @@ export const decryptMessage = (messageBase64: string, senderPublicKey: string, m
   }
 
   return JSON.parse(new TextDecoder().decode(decrypted));
+};
+
+// 1. Encrypt raw binary file using Hybrid Cryptography
+export const encryptFilePayload = async (
+  file: File,
+  recipientPubKeyBase64: string,
+  myPrivateKeyBase64: string
+): Promise<string> => {
+  // Convert inputs from Base64 strings to byte arrays
+  const recipientPubKey = decodeBase64(recipientPubKeyBase64);
+  const myPrivateKey = decodeBase64(myPrivateKeyBase64);
+
+  // Read file bytes
+  const fileBuffer = await file.arrayBuffer();
+  const fileBytes = new Uint8Array(fileBuffer);
+
+  // STEP 1: Generate random symmetric key and nonce for the file
+  const symmetricKey = nacl.randomBytes(nacl.secretbox.keyLength); // 32 bytes
+  const fileNonce = nacl.randomBytes(nacl.secretbox.nonceLength);  // 24 bytes
+
+  // STEP 2: Encrypt file data symmetrically
+  const fileCiphertext = nacl.secretbox(fileBytes, fileNonce, symmetricKey);
+
+  // STEP 3: Encrypt the symmetric key asymmetrically for the target recipient
+  const boxNonce = nacl.randomBytes(nacl.box.nonceLength); // 24 bytes
+  const encryptedSymmetricKey = nacl.box(symmetricKey, boxNonce, recipientPubKey, myPrivateKey);
+
+  // STEP 4: Package everything into a zero-knowledge transport payload string
+  const payload = {
+    isMedia: true,
+    fileName: file.name,
+    mimeType: file.type,
+    fileNonce: encodeBase64(fileNonce),
+    boxNonce: encodeBase64(boxNonce),
+    encryptedKey: encodeBase64(encryptedSymmetricKey),
+    fileData: encodeBase64(fileCiphertext),
+  };
+
+  return btoa(JSON.stringify(payload)); // Return as unified base64 packet
+};
+
+// 2. Decrypt a hybrid binary payload back into a viewable Data URI url
+export const decryptFilePayload = (
+  packedPayloadBase64: string,
+  senderPubKeyBase64: string,
+  myPrivateKeyBase64: string
+): { url: string; fileName: string; mimeType: string } => {
+  const rawJson = atob(packedPayloadBase64);
+  const payload = JSON.parse(rawJson);
+
+  const senderPubKey = decodeBase64(senderPubKeyBase64);
+  const myPrivateKey = decodeBase64(myPrivateKeyBase64);
+  
+  const boxNonce = decodeBase64(payload.boxNonce);
+  const encryptedKey = decodeBase64(payload.encryptedKey);
+  const fileNonce = decodeBase64(payload.fileNonce);
+  const fileData = decodeBase64(payload.fileData);
+
+  // STEP 1: Open asymmetric wrapper to extract the one-time symmetric key
+  const symmetricKey = nacl.box.open(encryptedKey, boxNonce, senderPubKey, myPrivateKey);
+  if (!symmetricKey) throw new Error("Asymmetric key handshake decryption failed.");
+
+  // STEP 2: Open symmetric lock to decrypt the raw file bytes
+  const decryptedFileBytes = nacl.secretbox.open(fileData, fileNonce, symmetricKey);
+  if (!decryptedFileBytes) throw new Error("Symmetric file decryption failed. Content corrupted.");
+
+  // STEP 3: Reconstruct file object into a local blob URL for image rendering
+  const blob = new Blob([decryptedFileBytes], { type: payload.mimeType });
+  const url = URL.createObjectURL(blob);
+
+  return { url, fileName: payload.fileName, mimeType: payload.mimeType };
 };

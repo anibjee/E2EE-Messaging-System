@@ -11,7 +11,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/auth")
-@CrossOrigin(origins = "http://localhost:3000")
 public class AuthController {
 
     private final UserRepository userRepository;
@@ -32,7 +31,13 @@ public class AuthController {
         user.setPublicKey(request.publicKey());
         user.setLastSeen(LocalDateTime.now());
 
-        return ResponseEntity.ok(userRepository.save(user));
+        userRepository.save(user);
+
+        // 🟢 FIX: Return a lightweight payload instead of the heavy database model object
+        return ResponseEntity.ok(java.util.Map.of(
+            "username", user.getUsername(),
+            "status", "IDENTITY_REGISTERED"
+        ));
     }
 
     // NEW: The lookup endpoint for Phase 4

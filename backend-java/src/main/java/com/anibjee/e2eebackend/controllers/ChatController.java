@@ -11,7 +11,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
-@CrossOrigin(origins = "*")
 public class ChatController {
 
     private final SimpMessagingTemplate messagingTemplate;
@@ -70,9 +69,15 @@ public class ChatController {
     // 2. HTTP Endpoint to serve historical ciphertext
     @GetMapping("/api/v1/messages/history")
     public ResponseEntity<List<Message>> getChatHistory(
-            @RequestParam String user1,
-            @RequestParam String user2) {
-        List<Message> history = messageRepository.findChatHistory(user1, user2);
+            @RequestParam("user1") String user1,
+            @RequestParam("user2") String user2) {
+        
+        if (user1 == null || user2 == null || user1.trim().isEmpty() || user2.trim().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        // Fetch history using case-insensitive handle matching
+        List<Message> history = messageRepository.findChatHistory(user1.trim(), user2.trim());
         return ResponseEntity.ok(history);
     }
 }

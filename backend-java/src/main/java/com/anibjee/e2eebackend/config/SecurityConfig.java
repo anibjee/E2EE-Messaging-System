@@ -12,15 +12,20 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for stateless REST APIs
+            // 1. Disable Cross-Site Request Forgery (CSRF) for development REST endpoints
+            .csrf(AbstractHttpConfigurer::disable)
+            
+            // 2. Allow your global CorsConfig to dictate origin validation access rules
+            .cors(cors -> {})
+            
+            // 3. 🔓 THE PUBLIC GATEWAY: Explicitly permit all chat and websocket traffic 
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/auth/**").permitAll() // Open the auth routes
-                .requestMatchers("/ws-chat/**").permitAll()     // NEW: Open the WebSocket handshake!
-                .requestMatchers("/api/v1/messages/**").permitAll() // Open the messages API
-                .anyRequest().authenticated()                   // Lock everything else
+                .requestMatchers("/api/v1/**", "/ws-chat/**").permitAll()
+                .anyRequest().permitAll()
             );
+
         return http.build();
     }
 }

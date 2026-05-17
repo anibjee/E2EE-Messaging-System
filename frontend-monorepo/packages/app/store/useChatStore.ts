@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { decryptMessage, getOrCreateKeysForUser } from '../utils/crypto';
+import { decryptMessage, getOrCreateKeysForUser, decryptFilePayload } from '../utils/crypto';
 import { fetchPublicKey, registerUserOnServer, fetchChatHistory, fetchAllUsers } from '../utils/api';
 
 export interface Message {
@@ -54,6 +54,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Clear runtime UI state ONLY (Preserves localStorage cryptographic key vault)
     set({
       userId: null,
+      myKeys: null, // Cleanly lock vault in active memory
       messages: [],
       activeTarget: null,
       isConnected: false,
@@ -121,11 +122,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
   directory: [],
 
   refreshDirectory: async () => {
+    let localContacts: string[] = [];
+
+    // 1. Load contacts from local browser cache
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('e2ee_contacts');
+      if (cached) {
+        try {
+          localContacts = JSON.parse(cached);
+        } catch (e) {
+          console.error("Failed to parse cached contacts:", e);
+        }
+      }
+    }
+
     try {
-      const users = await fetchAllUsers(); 
-      set({ directory: users });
+      // 2. Fetch server directory
+      const serverUsers = await fetchAllUsers(); 
+      
+      // 3. Merge server users with local contacts and deduplicate
+      const merged = Array.from(new Set([
+        ...serverUsers.map(u => u.trim()),
+        ...localContacts.map(c => c.trim())
+      ]));
+
+      // 4. Save merged list back to local cache
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('e2ee_contacts', JSON.stringify(merged));
+      }
+
+      set({ directory: merged });
     } catch (error) {
-      console.error("Failed to load user directory", error);
+      console.error("Failed to load user directory, falling back to local cache:", error);
+      set({ directory: localContacts });
     }
   },
 
@@ -133,34 +162,57 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadSecureHistory: async (targetId: string) => {
     const { userId, myKeys } = get();
-    if (!userId || !myKeys) return;
+    if (!userId || !targetId || !myKeys) return;
+
+    // Reset current message view instantly to avoid stale timeline displays
+    set({ messages: [] });
 
     try {
-      // 1. Fetch the raw encrypted archive from Spring Boot
-      const historicalPayloads = await fetchChatHistory(userId, targetId);
+      const response = await fetch(`http://localhost:8080/api/v1/messages/history?user1=${userId}&user2=${targetId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`📡 Connection warning: History endpoint returned status ${response.status}`);
+        return;
+      }
+
+      const historyData = await response.json();
       
-      // 2. Fetch the TARGET'S public key ONCE (This is the missing magic key)
-      const targetPubKey = await fetchPublicKey(targetId);
+      if (Array.isArray(historyData)) {
+        // Fetch the TARGET'S public key ONCE (This is the missing magic key)
+        const targetPubKey = await fetchPublicKey(targetId);
 
-      // 3. Process every message
-      const decryptedMessages = await Promise.all(
-        historicalPayloads.map(async (msg: any) => {
-          try {
-            // Whether I sent it or they sent it, the shared secret uses MY private key and THEIR public key
-            const plain = decryptMessage(msg.ciphertext, targetPubKey, myKeys.privateKey);
-            
-            // Swap the ciphertext for the translated plaintext
-            return { ...msg, ciphertext: plain.text }; 
-          } catch (decryptionError) {
-            console.warn(`Could not decrypt message ${msg.id}. Keeping ciphertext.`);
-            return msg; // Fallback to gibberish if keys don't match
-          }
-        })
-      );
+        const decryptedMessages = await Promise.all(
+          historyData.map(async (msg: any) => {
+            try {
+              // If it is a media payload (starts with 'ey'), keep raw ciphertext so SecureMediaMessage can decrypt it dynamically
+              if (msg.ciphertext && msg.ciphertext.startsWith('ey')) {
+                return msg;
+              }
 
-      set({ messages: decryptedMessages });
-    } catch (err) {
-      console.error("Could not populate archive stream", err);
+              // Whether I sent it or they sent it, the shared secret uses MY private key and THEIR public key
+              const plain = decryptMessage(msg.ciphertext, targetPubKey, myKeys.privateKey);
+              
+              // Swap the ciphertext for the translated plaintext
+              return { ...msg, ciphertext: plain.text }; 
+            } catch (decryptionError) {
+              console.warn(`Could not decrypt message ${msg.id}. Keeping ciphertext.`, decryptionError);
+              return msg; // Fallback to gibberish if keys don't match
+            }
+          })
+        );
+
+        set({ messages: decryptedMessages });
+        console.log(`🔐 Successfully parsed, decrypted, and hydrated ${decryptedMessages.length} entries from database.`);
+      }
+    } catch (networkException) {
+      // 🛡️ Safe Catch: Prevents uncaught promise rejections from throwing Next.js dev overlays
+      console.error("❌ History service unreachable or rejected:", networkException);
+      set({ messages: [] }); // Safely fall back to an empty conversation view
     }
   },
 
@@ -209,14 +261,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
           if (myKeys) {
             try {
-              // Fetch the sender's public key
-              const senderPubKey = await fetchPublicKey(received.senderId);
-              console.log(`🔑 Fetched Sender (${received.senderId}) PubKey:`, senderPubKey);
-              
-              // Attempt to unlock it
-              const plain = decryptMessage(received.ciphertext, senderPubKey, myKeys.privateKey);
-              received.ciphertext = plain.text; 
-              console.log("✅ Live Decryption Success!");
+              // If it is a media payload (starts with 'ey'), keep raw ciphertext so SecureMediaMessage can decrypt it dynamically
+              if (received.ciphertext && received.ciphertext.startsWith('ey')) {
+                // Keep raw ciphertext intact
+              } else {
+                // Fetch the sender's public key
+                const senderPubKey = await fetchPublicKey(received.senderId);
+                console.log(`🔑 Fetched Sender (${received.senderId}) PubKey:`, senderPubKey);
+
+                // Attempt to unlock standard text message
+                const plain = decryptMessage(received.ciphertext, senderPubKey, myKeys.privateKey);
+                received.ciphertext = plain.text; 
+                console.log("✅ Live Decryption Success!");
+              }
 
             } catch (e) {
               // 🔴 THE SMOKING GUN: This will print EXACTLY why it failed
