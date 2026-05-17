@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -41,5 +42,16 @@ public class AuthController {
         return userRepository.findByUsername(username)
                 .map(user -> ResponseEntity.ok(Map.of("publicKey", user.getPublicKey())))
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    // NEW: Directory endpoint for the Sidebar
+    @GetMapping("/users")
+    public ResponseEntity<List<String>> getAllRegisteredUsers() {
+        // Fetch all users, map them to just their usernames, and return as a list
+        List<String> usernames = userRepository.findAll().stream()
+                .map(User::getUsername)
+                .toList(); // Note: If using Java < 16, use .collect(Collectors.toList())
+                
+        return ResponseEntity.ok(usernames);
     }
 }

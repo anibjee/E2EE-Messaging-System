@@ -1,36 +1,78 @@
 package com.anibjee.e2eebackend.controllers;
 
+import com.anibjee.e2eebackend.models.Message;
+import com.anibjee.e2eebackend.repositories.MessageRepository;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+import java.time.LocalDateTime;
+import java.util.List;
+
+@RestController
+@CrossOrigin(origins = "*")
 public class ChatController {
 
     private final SimpMessagingTemplate messagingTemplate;
+    private final MessageRepository messageRepository;
 
-    public ChatController(SimpMessagingTemplate messagingTemplate) {
+    public ChatController(SimpMessagingTemplate messagingTemplate, MessageRepository messageRepository) {
         this.messagingTemplate = messagingTemplate;
+        this.messageRepository = messageRepository;
     }
 
-    // A lightweight record to hold the routing data and the ciphertext
-    public record ChatMessage(String senderId, String recipientId, String ciphertext) {}
+    // 1. Create a safe "Buffer" object that accepts the frontend payload without crashing JPA
+    public record IncomingPayload(String id, String senderId, String recipientId, String ciphertext) {}
 
-    /**
-     * Handles 1-on-1 direct messages.
-     * Clients send to: /app/chat.private
-     */
+    // 2. Intercept incoming live WS messages and persist them safely
     @MessageMapping("/chat.private")
-    public void routePrivateMessage(@Payload ChatMessage message) {
-        // The server does NOT decrypt the ciphertext. It blindly routes it.
-        // It sends the payload to: /user/{recipientId}/queue/messages
-        messagingTemplate.convertAndSendToUser(
-                message.recipientId(), 
-                "/queue/messages", 
-                message
-        );
+    public void processMessage(@RequestBody IncomingPayload payload) {
+        System.out.println("🚀 1. Payload received from " + payload.senderId() + " targeting " + payload.recipientId());
         
-        System.out.println("Routed ciphertext from " + message.senderId() + " to " + message.recipientId());
+        try {
+            // Create a fresh entity
+            Message newEntity = new Message(
+                payload.senderId(), 
+                payload.recipientId(), 
+                payload.ciphertext(), 
+                LocalDateTime.now()
+            );
+            
+            // Save to PostgreSQL
+            Message savedMessage = messageRepository.save(newEntity);
+            System.out.println("💾 2. Message saved to DB with new ID: " + savedMessage.getId());
+
+            // BYPASS Spring Security's Principal requirement by manually building the destination string
+            String explicitDestination = "/queue/chat/" + savedMessage.getRecipientId();
+            messagingTemplate.convertAndSend(explicitDestination, savedMessage);
+            
+            System.out.println("📫 3. Successfully routed to: " + explicitDestination);
+
+        } catch (Exception e) {
+            // If the database or router fails, scream loudly in the terminal
+            System.err.println("❌ BACKEND CRASH in processMessage: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // 1. Lightweight payload just for typing events
+    public record TypingPayload(String senderId, String recipientId) {}
+
+    // 2. The Ephemeral Router (No database interaction)
+    @MessageMapping("/chat.typing")
+    public void processTyping(@RequestBody TypingPayload payload) {
+        // Send directly to a dedicated 'typing' queue for the recipient
+        String destination = "/queue/typing/" + payload.recipientId();
+        messagingTemplate.convertAndSend(destination, payload);
+    }
+
+    // 2. HTTP Endpoint to serve historical ciphertext
+    @GetMapping("/api/v1/messages/history")
+    public ResponseEntity<List<Message>> getChatHistory(
+            @RequestParam String user1,
+            @RequestParam String user2) {
+        List<Message> history = messageRepository.findChatHistory(user1, user2);
+        return ResponseEntity.ok(history);
     }
 }

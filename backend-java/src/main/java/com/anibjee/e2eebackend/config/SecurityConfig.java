@@ -18,6 +18,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/**").permitAll() // Open the auth routes
                 .requestMatchers("/ws-chat/**").permitAll()     // NEW: Open the WebSocket handshake!
+                .requestMatchers("/api/v1/messages/**").permitAll() // Open the messages API
                 .anyRequest().authenticated()                   // Lock everything else
             );
         return http.build();
